@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-// Asegúrate de importar el archivo donde guardaste la clase RoomService
+import 'package:flutter/services.dart'; // Necesario para el Clipboard y el InputFormatter
 import 'package:walatro/services/room_services.dart';
 
 class LobbyScreen extends StatefulWidget {
@@ -13,61 +13,82 @@ class _LobbyScreenState extends State<LobbyScreen> {
   final _serverUrl = 'https://walatro.onrender.com';
   final _roomService = RoomService();
 
-  // Controladores de texto
   final _nameController = TextEditingController();
   final _roomCodeController = TextEditingController();
   final _chatController = TextEditingController();
 
-  // Estado de nuestra UI
   String? myName;
   String? currentRoomCode;
   List<String> players = [];
-  List<Map<String, String>> chatMessages = []; // Formato: {'sender': 'Juan', 'message': 'Hola'}
+  List<Map<String, String>> chatMessages = [];
+
+  // Estado de conexión para el semáforo retro
+  String connectionStatus = 'connecting';
 
   @override
   void initState() {
     super.initState();
     _setupRoomService();
     _roomService.connect(_serverUrl);
+    _roomService.onConnectionStatus?.call('connecting');
   }
 
   void _setupRoomService() {
-    // Cuando logras entrar a una sala (ya sea creada o unida)
+    _roomService.onConnectionStatus = (status) {
+      if (mounted) setState(() => connectionStatus = status);
+    };
+
     _roomService.onRoomJoined = (code, users) {
       setState(() {
         currentRoomCode = code;
         players = users;
-        chatMessages.add({'sender': 'Sistema', 'message': '¡Entraste a la sala $code!'});
+        chatMessages.add({
+          'sender': 'Sistema',
+          'message': '¡Entraste a la sala $code!',
+        });
       });
     };
 
-    // Cuando un pobre diablo se une a tu sala
     _roomService.onUserJoined = (userName) {
       setState(() {
         if (!players.contains(userName)) players.add(userName);
-        chatMessages.add({'sender': 'Sistema', 'message': '$userName se unió a la fiesta.'});
+        chatMessages.add({
+          'sender': 'Sistema',
+          'message': '$userName se unió a la fiesta.',
+        });
       });
     };
 
-    // Cuando alguien abandona el barco
     _roomService.onUserLeft = (userName) {
       setState(() {
         players.remove(userName);
-        chatMessages.add({'sender': 'Sistema', 'message': '$userName se ha ido.'});
+        chatMessages.add({
+          'sender': 'Sistema',
+          'message': '$userName se ha ido.',
+        });
       });
     };
 
-    // Cuando alguien escribe en el chat
     _roomService.onChatMessage = (sender, message) {
       setState(() {
         chatMessages.add({'sender': sender, 'message': message});
       });
     };
 
-    // Si algo explota
     _roomService.onError = (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error,
+            style: const TextStyle(
+              fontFamily: 'Courier',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
     };
   }
 
@@ -81,20 +102,130 @@ class _LobbyScreenState extends State<LobbyScreen> {
   }
 
   // ==========================================
-  // CONSTRUCTOR DE LA UI
+  // WIDGETS RETRO / 8-BIT
   // ==========================================
+
+  // Contenedor estilo bloque clásico
+  Widget _retroContainer({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2B2B2B),
+        border: Border.all(color: Colors.white, width: 4),
+        boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(6, 6))],
+      ),
+      child: child,
+    );
+  }
+
+  // Botón cuadradito
+  Widget _retroButton({
+    required String text,
+    required VoidCallback onPressed,
+    Color color = Colors.green,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: Colors.white, width: 3),
+          boxShadow: const [
+            BoxShadow(color: Colors.black, offset: Offset(4, 4)),
+          ],
+        ),
+        child: Text(
+          text.toUpperCase(),
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            fontFamily: 'Courier',
+          ),
+        ),
+      ),
+    );
+  }
+
+  // El indicador de estado
+  Widget _buildStatusIndicator() {
+    Color statusColor;
+    switch (connectionStatus) {
+      case 'connected':
+        statusColor = Colors.greenAccent;
+        break;
+      case 'connecting':
+        statusColor = Colors.orangeAccent;
+        break;
+      case 'disconnected':
+      default:
+        statusColor = Colors.redAccent;
+        break;
+    }
+
+    return Container(
+      width: 16,
+      height: 16,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: statusColor,
+        border: Border.all(
+          color: Colors.black,
+          width: 2,
+        ), // Cuadrado 8-bit en vez de círculo
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        title: Text(currentRoomCode != null ? 'Sala: $currentRoomCode' : 'Walatro Lobby'),
+        elevation: 0,
+        title: Row(
+          children: [
+            _buildStatusIndicator(),
+            Text(
+              currentRoomCode != null
+                  ? 'SALA: $currentRoomCode'
+                  : 'WALATRO LOBBY',
+              style: const TextStyle(
+                color: Colors.white,
+                fontFamily: 'Courier',
+                fontWeight: FontWeight.bold,
+                shadows: [Shadow(color: Colors.black, offset: Offset(2, 2))],
+              ),
+            ),
+            if (currentRoomCode != null)
+              IconButton(
+                icon: const Icon(Icons.copy, size: 20),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: currentRoomCode!));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        '¡CÓDIGO COPIADO!',
+                        style: TextStyle(
+                          fontFamily: 'Courier',
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
       ),
       body: Stack(
         children: [
-          // Tu fondito facha
           Positioned.fill(
             child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
           ),
@@ -104,7 +235,6 @@ class _LobbyScreenState extends State<LobbyScreen> {
                 constraints: const BoxConstraints(maxWidth: 560),
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  // Aquí ocurre la magia de decidir qué pantalla mostrar
                   child: _buildCurrentView(),
                 ),
               ),
@@ -125,120 +255,200 @@ class _LobbyScreenState extends State<LobbyScreen> {
     }
   }
 
-  // 1. PANTALLA PARA PEDIR EL NOMBRE
   Widget _buildNameInput() {
-    return Card(
-      color: Colors.black54,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('¿Cómo te llamas?', style: TextStyle(color: Colors.white, fontSize: 20)),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _nameController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                filled: true,
-                fillColor: Colors.white24,
-                hintText: 'Tu apodo bacán',
-                hintStyle: TextStyle(color: Colors.white54),
+    return _retroContainer(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'INSERTE MONEDA\n(O TU NOMBRE)',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontFamily: 'Courier',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _nameController,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'Courier',
+              fontWeight: FontWeight.bold,
+            ),
+            textCapitalization: TextCapitalization.characters,
+            inputFormatters: [
+              UpperCaseTextFormatter(),
+            ], // ¡Magia para las mayúsculas!
+            decoration: const InputDecoration(
+              filled: true,
+              fillColor: Colors.black54,
+              hintText: 'PLAYER 1',
+              hintStyle: TextStyle(color: Colors.white30),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white, width: 2),
+                borderRadius: BorderRadius.zero,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.greenAccent, width: 2),
+                borderRadius: BorderRadius.zero,
               ),
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                if (_nameController.text.trim().isNotEmpty) {
-                  setState(() => myName = _nameController.text.trim());
-                }
-              },
-              child: const Text('Continuar'),
-            )
-          ],
-        ),
+          ),
+          const SizedBox(height: 20),
+          RetroButton(
+            text: 'START',
+            onPressed: () {
+              if (_nameController.text.trim().isNotEmpty) {
+                setState(() => myName = _nameController.text.trim());
+              }
+            },
+          ),
+        ],
       ),
     );
   }
 
-  // 2. PANTALLA PARA CREAR/UNIRSE
   Widget _buildLobbyActions() {
-    return Card(
-      color: Colors.black54,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Hola, $myName', style: const TextStyle(color: Colors.white, fontSize: 20)),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed: () => _roomService.createRoom(myName!),
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
-              child: const Text('CREAR NUEVA SALA'),
+    return _retroContainer(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'HOLA, $myName',
+            style: const TextStyle(
+              color: Colors.greenAccent,
+              fontSize: 20,
+              fontFamily: 'Courier',
+              fontWeight: FontWeight.bold,
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Text('O', style: TextStyle(color: Colors.white70)),
-            ),
-            TextField(
-              controller: _roomCodeController,
-              style: const TextStyle(color: Colors.white),
-              textAlign: TextAlign.center,
-              decoration: const InputDecoration(
-                filled: true,
-                fillColor: Colors.white24,
-                hintText: 'CÓDIGO DE SALA',
-                hintStyle: TextStyle(color: Colors.white54),
+          ),
+          const SizedBox(height: 30),
+          RetroButton(
+            text: 'NUEVA PARTIDA',
+            onPressed: () => _roomService.createRoom(myName!),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Text(
+              '- O -',
+              style: TextStyle(
+                color: Colors.white70,
+                fontFamily: 'Courier',
+                fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: () {
-                final code = _roomCodeController.text.trim();
-                if (code.isNotEmpty) {
-                  _roomService.joinRoom(code, myName!);
-                }
-              },
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
-              child: const Text('UNIRSE'),
+          ),
+          TextField(
+            controller: _roomCodeController,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'Courier',
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 5,
             ),
-          ],
-        ),
+            textAlign: TextAlign.center,
+            textCapitalization: TextCapitalization.characters,
+            inputFormatters: [
+              UpperCaseTextFormatter(),
+              LengthLimitingTextInputFormatter(
+                4,
+              ), // Limita a 4 letras como tu servidor
+            ],
+            decoration: const InputDecoration(
+              filled: true,
+              fillColor: Colors.black54,
+              hintText: 'CODE',
+              hintStyle: TextStyle(color: Colors.white30, letterSpacing: 0),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white, width: 2),
+                borderRadius: BorderRadius.zero,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.orangeAccent, width: 2),
+                borderRadius: BorderRadius.zero,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          RetroButton(
+            text: 'UNIRSE',
+            color: Colors.orange,
+            onPressed: () {
+              final code = _roomCodeController.text.trim();
+              if (code.length == 4) {
+                _roomService.joinRoom(code, myName!);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('El código debe tener 4 letras.'),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
       ),
     );
   }
 
-  // 3. PANTALLA DE LA SALA (JUGADORES Y CHAT)
   Widget _buildRoom() {
     return Column(
       children: [
-        // Lista de jugadores
+        // Lista de jugadores retro
         Container(
-          height: 80,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
+          height: 70,
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2B2B2B),
+            border: Border.all(color: Colors.white, width: 3),
+          ),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: players.length,
             itemBuilder: (context, index) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Chip(
-                  label: Text(players[index]),
-                  backgroundColor: players[index] == myName ? Colors.green : Colors.blueGrey,
-                  labelStyle: const TextStyle(color: Colors.white),
+              final isMe = players[index] == myName;
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: isMe
+                      ? Colors.green.shade700
+                      : Colors.blueGrey.shade700,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: Center(
+                  child: Text(
+                    players[index],
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontFamily: 'Courier',
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               );
             },
           ),
         ),
         const SizedBox(height: 10),
-        
-        // El Chat
+
+        // Chat retro
         Expanded(
           child: Container(
-            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2B2B2B),
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: const [
+                BoxShadow(color: Colors.black, offset: Offset(4, 4)),
+              ],
+            ),
             child: Column(
               children: [
                 Expanded(
@@ -247,53 +457,65 @@ class _LobbyScreenState extends State<LobbyScreen> {
                     itemCount: chatMessages.length,
                     itemBuilder: (context, index) {
                       final msg = chatMessages[index];
-                      final isMe = msg['sender'] == myName;
                       final isSystem = msg['sender'] == 'Sistema';
 
-                      return Align(
-                        alignment: isSystem ? Alignment.center : (isMe ? Alignment.centerRight : Alignment.centerLeft),
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSystem ? Colors.transparent : (isMe ? Colors.green.shade800 : Colors.grey.shade800),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            isSystem ? msg['message']! : '${msg['sender']}: ${msg['message']}',
-                            style: TextStyle(
-                              color: isSystem ? Colors.white54 : Colors.white,
-                              fontStyle: isSystem ? FontStyle.italic : FontStyle.normal,
-                            ),
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Text(
+                          isSystem
+                              ? '> ${msg['message']}'
+                              : '[${msg['sender']}] ${msg['message']}',
+                          style: TextStyle(
+                            color: isSystem
+                                ? Colors.yellowAccent
+                                : Colors.white,
+                            fontFamily: 'Courier',
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       );
                     },
                   ),
                 ),
-                // Input de mensaje
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
+                Container(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: Colors.white, width: 2),
+                    ),
+                  ),
                   child: Row(
                     children: [
                       Expanded(
                         child: TextField(
                           controller: _chatController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Escribe algo...',
-                            hintStyle: const TextStyle(color: Colors.white54),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Courier',
+                            fontWeight: FontWeight.bold,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: 'ESCRIBE...',
+                            hintStyle: TextStyle(color: Colors.white30),
                             filled: true,
-                            fillColor: Colors.white24,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                            fillColor: Colors.black,
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                            ),
                           ),
                           onSubmitted: (_) => _sendChat(),
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.send, color: Colors.green),
+                      // Al lado del TextField del chat, reemplaza el GestureDetector por:
+                      RetroButton(
                         onPressed: _sendChat,
+                        fullWidth: false, // Para que no ocupe toda la pantalla
+                        padding: const EdgeInsets.all(12),
+                        child: const Icon(
+                          Icons.send,
+                          color: Colors.white,
+                          size: 24,
+                        ),
                       ),
                     ],
                   ),
@@ -312,5 +534,96 @@ class _LobbyScreenState extends State<LobbyScreen> {
       _roomService.sendChat(text);
       _chatController.clear();
     }
+  }
+}
+
+// Clase mágica para forzar mayúsculas mientras el usuario escribe
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return TextEditingValue(
+      text: newValue.text.toUpperCase(),
+      selection: newValue.selection,
+    );
+  }
+}
+
+// ==========================================
+// BOTÓN RETRO INTERACTIVO
+// ==========================================
+class RetroButton extends StatefulWidget {
+  final String? text;
+  final Widget? child;
+  final VoidCallback onPressed;
+  final Color color;
+  final bool fullWidth;
+  final EdgeInsetsGeometry padding;
+
+  const RetroButton({
+    super.key,
+    this.text,
+    this.child,
+    required this.onPressed,
+    this.color = Colors.green,
+    this.fullWidth = true,
+    this.padding = const EdgeInsets.symmetric(vertical: 15),
+  });
+
+  @override
+  State<RetroButton> createState() => _RetroButtonState();
+}
+
+class _RetroButtonState extends State<RetroButton> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click, // ¡Aquí activamos la manito del cursor!
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) {
+          setState(() => _isPressed = false);
+          widget.onPressed();
+        },
+        onTapCancel: () => setState(() => _isPressed = false),
+        child: AnimatedContainer(
+          duration: const Duration(
+            milliseconds: 50,
+          ), // Animación ultra rápida para el "click"
+          width: widget.fullWidth ? double.infinity : null,
+          margin: EdgeInsets.only(
+            // El truco de la maquinita: lo desplazamos 4 píxeles cuando se presiona
+            top: _isPressed ? 4 : 0,
+            left: _isPressed ? 4 : 0,
+            bottom: _isPressed ? 0 : 4,
+            right: _isPressed ? 0 : 4,
+          ),
+          padding: widget.padding,
+          decoration: BoxDecoration(
+            color: widget.color,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: _isPressed
+                ? [] // Al hundirse, desaparece la sombra
+                : [const BoxShadow(color: Colors.black, offset: Offset(4, 4))],
+          ),
+          child:
+              widget.child ??
+              Text(
+                widget.text ?? '',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  fontFamily: 'Courier',
+                ),
+              ),
+        ),
+      ),
+    );
   }
 }

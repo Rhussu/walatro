@@ -1,5 +1,7 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
+
+
 class RoomService {
   late IO.Socket socket;
   
@@ -12,6 +14,8 @@ class RoomService {
   Function(String userName)? onUserLeft;
   Function(String senderName, String message)? onChatMessage;
   Function(String errorMessage)? onError;
+
+  Function(String status)? onConnectionStatus; // Puede ser: 'connecting', 'connected', 'disconnected'
 
   // 1. CONECTAR AL SERVIDOR
   void connect(String serverUrl) {
@@ -55,6 +59,19 @@ class RoomService {
     // Manejo de errores (ej. "La sala no existe")
     socket.on('error', (data) {
       onError?.call(data.toString());
+    });
+
+    socket.onConnect((_) {
+      onConnectionStatus?.call('connected');
+      print('🔌 Conectado al servidor Socket.IO');
+    });
+
+    socket.onDisconnect((_) {
+      onConnectionStatus?.call('disconnected');
+    });
+
+    socket.onConnectError((_) {
+      onConnectionStatus?.call('disconnected');
     });
   }
 
