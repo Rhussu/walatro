@@ -41,6 +41,13 @@ io.on('connection', (socket) => {
     console.log(`Sala creada: ${roomCode} por ${userName}`);
   });
 
+  // 4. ACCIONES DEL JUEGO (Ready, Movimientos, Estados)
+  socket.on('game_action', (data) => {
+    // io.in manda la data a todos en la sala (incluyendo al que lo envió, 
+    // así todos sincronizan el mismo estado)
+    io.in(data.roomCode).emit('game_action', data);
+  });
+
   socket.on('join_room', (data) => {
       const roomCode = data.roomCode;
       const userName = data.userName;
