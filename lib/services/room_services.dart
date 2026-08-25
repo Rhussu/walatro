@@ -1,6 +1,5 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
-
-
+import 'package:walatro/models/player.dart'; // Asegúrate de importar el archivo anterior
 
 class RoomService {
   late IO.Socket socket;
@@ -8,118 +7,84 @@ class RoomService {
   String? currentRoom;
   String? myName;
 
-  // ===== CALLBACKS PARA ACTUALIZAR TU UI =====
-  Function(String roomCode, List<String> users)? onRoomJoined;
-  Function(String userName)? onUserJoined;
+  Function(String status)? onConnectionStatus;
+  Function(String roomCode, List<Player> users)? onRoomJoined; // ¡Ahora usa Player!
+  Function(Player user)? onUserJoined;
   Function(String userName)? onUserLeft;
   Function(String senderName, String message)? onChatMessage;
+  Function(String userName, bool isReady)? onReadyChanged;
+  Function()? onGameStarted;
   Function(String errorMessage)? onError;
-
-  Function(String status)? onConnectionStatus; // Puede ser: 'connecting', 'connected', 'disconnected'
   Function(Map<String, dynamic> data)? onGameAction;
 
-  // 1. CONECTAR AL SERVIDOR
   void connect(String serverUrl) {
     socket = IO.io(serverUrl, IO.OptionBuilder()
-        .setTransports(['websocket']) // Forzamos websocket puro
+        .setTransports(['websocket'])
         .disableAutoConnect()
         .build());
 
-    // Escuchar eventos desde el servidor
     _setupListeners();
-    
     socket.connect();
+    onConnectionStatus?.call('connecting');
   }
 
   void _setupListeners() {
-    socket.onConnect((_) => print('🔌 Conectado al servidor Socket.IO'));
+    socket.onConnect((_) => onConnectionStatus?.call('connected'));
+    socket.onDisconnect((_) => onConnectionStatus?.call('disconnected'));
+    socket.onConnectError((_) => onConnectionStatus?.call('disconnected'));
 
-    // Cuando entras (o creas) la sala con éxito
     socket.on('room_joined', (data) {
       currentRoom = data['roomCode'];
-      // Recibes la lista de los que ya estaban
-      List<String> users = List<String>.from(data['users']); 
+      List<Player> users = (data['users'] as List).map((u) => Player.fromJson(u)).toList();
       onRoomJoined?.call(currentRoom!, users);
     });
 
-    // Cuando alguien nuevo entra a tu sala
-    socket.on('user_joined', (data) {
-      onUserJoined?.call(data['userName']);
-    });
+    socket.on('user_joined', (data) => onUserJoined?.call(Player.fromJson(data)));
+    socket.on('user_left', (data) => onUserLeft?.call(data['userName']));
+    socket.on('chat_message', (data) => onChatMessage?.call(data['senderName'], data['message']));
+    socket.on('error', (data) => onError?.call(data.toString()));
+    socket.on('game_action', (data) => onGameAction?.call(Map<String, dynamic>.from(data)));
 
-    // Cuando alguien se va
-    socket.on('user_left', (data) {
-      onUserLeft?.call(data['userName']);
-    });
+    // Nuevos eventos
+    socket.on('ready_changed', (data) => onReadyChanged?.call(data['userName'], data['isReady']));
+    socket.on('game_started', (_) => onGameStarted?.call());
+  }
 
-    // Cuando recibes un mensaje del chat
-    socket.on('chat_message', (data) {
-      onChatMessage?.call(data['senderName'], data['message']);
-    });
+  void createRoom(String userName) {
+    myName = userName;
+    socket.emit('create_room', {'userName': userName});
+  }
 
-    socket.on('game_action', (data) {
-      // Data es un mapa dinámico, así que puedes recibir cualquier cosa
-      onGameAction?.call(Map<String, dynamic>.from(data));
-    });
+  void joinRoom(String roomCode, String userName) {
+    myName = userName;
+    socket.emit('join_room', {'roomCode': roomCode, 'userName': userName});
+  }
 
-    // Manejo de errores (ej. "La sala no existe")
-    socket.on('error', (data) {
-      onError?.call(data.toString());
-    });
+  void sendChat(String text) {
+    if (currentRoom != null && myName != null) {
+      socket.emit('send_chat', {'roomCode': currentRoom, 'senderName': myName, 'message': text});
+    }
+  }
 
-    socket.onConnect((_) {
-      onConnectionStatus?.call('connected');
-      print('🔌 Conectado al servidor Socket.IO');
-    });
+  // Nuevas acciones para el Ready y Empezar
+  void setReady(bool isReady) {
+    if (currentRoom != null && myName != null) {
+      socket.emit('set_ready', {'roomCode': currentRoom, 'userName': myName, 'isReady': isReady});
+    }
+  }
 
-    socket.onDisconnect((_) {
-      onConnectionStatus?.call('disconnected');
-    });
-
-    socket.onConnectError((_) {
-      onConnectionStatus?.call('disconnected');
-    });
+  void startGame() {
+    if (currentRoom != null) {
+      socket.emit('start_game', currentRoom);
+    }
   }
 
   void sendGameAction(String actionType, dynamic payload) {
     if (currentRoom != null && myName != null) {
-      socket.emit('game_action', {
-        'roomCode': currentRoom,
-        'sender': myName,
-        'action': actionType, // Ej: 'PLAYER_READY', 'MOVE_CARD', etc.
-        'payload': payload,   // Ej: { 'cardId': 4, 'position': [1,2] }
-      });
+      socket.emit('game_action', {'roomCode': currentRoom, 'sender': myName, 'action': actionType, 'payload': payload});
     }
   }
 
-  // 2. CREAR UNA SALA NUEVA
-  void createRoom(String userName) {
-    myName = userName;
-    // Le decimos al servidor que queremos crear una sala
-    socket.emit('create_room', {'userName': userName});
-  }
-
-  // 3. UNIRSE A UNA SALA EXISTENTE
-  void joinRoom(String roomCode, String userName) {
-    myName = userName;
-    socket.emit('join_room', {
-      'roomCode': roomCode, 
-      'userName': userName
-    });
-  }
-
-  // 4. ENVIAR MENSAJE AL CHAT
-  void sendChat(String text) {
-    if (currentRoom != null && myName != null) {
-      socket.emit('send_chat', {
-        'roomCode': currentRoom,
-        'senderName': myName,
-        'message': text,
-      });
-    }
-  }
-
-  // LIMPIEZA
   void dispose() {
     socket.disconnect();
     socket.dispose();
