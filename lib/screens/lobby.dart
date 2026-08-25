@@ -203,7 +203,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
             ),
             if (currentRoomCode != null)
               IconButton(
-                icon: const Icon(Icons.copy, size: 20),
+                icon: const Icon(Icons.copy, size: 20, color: Colors.white),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: currentRoomCode!));
                   ScaffoldMessenger.of(context).showSnackBar(

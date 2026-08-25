@@ -16,6 +16,7 @@ class RoomService {
   Function(String errorMessage)? onError;
 
   Function(String status)? onConnectionStatus; // Puede ser: 'connecting', 'connected', 'disconnected'
+  Function(Map<String, dynamic> data)? onGameAction;
 
   // 1. CONECTAR AL SERVIDOR
   void connect(String serverUrl) {
@@ -56,6 +57,11 @@ class RoomService {
       onChatMessage?.call(data['senderName'], data['message']);
     });
 
+    socket.on('game_action', (data) {
+      // Data es un mapa dinámico, así que puedes recibir cualquier cosa
+      onGameAction?.call(Map<String, dynamic>.from(data));
+    });
+
     // Manejo de errores (ej. "La sala no existe")
     socket.on('error', (data) {
       onError?.call(data.toString());
@@ -73,6 +79,17 @@ class RoomService {
     socket.onConnectError((_) {
       onConnectionStatus?.call('disconnected');
     });
+  }
+
+  void sendGameAction(String actionType, dynamic payload) {
+    if (currentRoom != null && myName != null) {
+      socket.emit('game_action', {
+        'roomCode': currentRoom,
+        'sender': myName,
+        'action': actionType, // Ej: 'PLAYER_READY', 'MOVE_CARD', etc.
+        'payload': payload,   // Ej: { 'cardId': 4, 'position': [1,2] }
+      });
+    }
   }
 
   // 2. CREAR UNA SALA NUEVA
