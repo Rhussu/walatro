@@ -53,7 +53,7 @@ function initRound(roomCode, roundNumber = 1) {
     deck: rawDeck,
     discardPile: [topDiscard],
     players,
-    activePlayerIndex: 0,
+    activePlayerIndex: (roundNumber - 1) % players.length,
     drawnCard: null,
     drawnFrom: null,
     pendingPowerCard: null
@@ -183,8 +183,43 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (room) {
       io.in(roomCode).emit('game_started');
-      // Iniciar primera ronda
-      initRound(roomCode, 1);
+      // Breve margen (120ms) para que los clientes naveguen y monten listeners
+      setTimeout(() => {
+        initRound(roomCode, 1);
+      }, 120);
+    }
+  });
+
+  // Re-sincronizar estado si un cliente entró tarde o perdió el evento
+  socket.on('get_game_state', (data) => {
+    const { roomCode, playerName } = data;
+    const room = rooms[roomCode];
+    if (room && room.game) {
+      const game = room.game;
+      const player = game.players.find(p => p.name === playerName);
+      if (player) {
+        const otherPlayers = game.players
+          .filter(other => other.name !== player.name)
+          .map(other => ({
+            name: other.name,
+            cardCount: other.cards.filter(c => c !== null).length
+          }));
+        const topDiscard = game.discardPile[game.discardPile.length - 1];
+
+        socket.emit('round_started', {
+          roundNumber: game.roundNumber,
+          myHand: player.cards,
+          otherPlayers,
+          topDiscard,
+          deckCount: game.deck.length,
+          peekDurationSeconds: 5
+        });
+
+        const activePlayer = game.players[game.activePlayerIndex];
+        if (activePlayer) {
+          socket.emit('turn_changed', { activePlayer: activePlayer.name });
+        }
+      }
     }
   });
 
@@ -262,6 +297,8 @@ io.on('connection', (socket) => {
         const newCard = game.drawnCard;
         newCard.isFaceUp = false;
         activePlayer.cards[targetSlotIndex] = newCard;
+        // Notificar mano actualizada al jugador
+        socket.emit('hand_updated', { myHand: activePlayer.cards });
       }
     } else {
       // DISCARD directo
@@ -330,6 +367,10 @@ io.on('connection', (socket) => {
         const targetCard = target.cards[targetSlot];
         player.cards[mySlot] = targetCard;
         target.cards[targetSlot] = myCard;
+
+        // Notificar manos actualizadas a ambos jugadores
+        io.to(player.id).emit('hand_updated', { myHand: player.cards });
+        io.to(target.id).emit('hand_updated', { myHand: target.cards });
       }
     }
 
@@ -388,7 +429,8 @@ io.on('connection', (socket) => {
       targetPlayer,
       slotIndex,
       success: result.success,
-      cardPlayed: result.cardPlayed
+      cardPlayed: result.cardPlayed,
+      penaltyCard: result.penaltyCard || null
     });
 
     if (result.success) {
@@ -397,6 +439,21 @@ io.on('connection', (socket) => {
         burnedBy: caller
       });
     }
+
+    // Sincronizar manos privadas de los afectados y conteos
+    if (callerPlayer) {
+      io.to(callerPlayer.id).emit('hand_updated', { myHand: callerPlayer.cards });
+    }
+    if (target && target.id !== callerPlayer.id) {
+      io.to(target.id).emit('hand_updated', { myHand: target.cards });
+    }
+
+    io.in(roomCode).emit('player_counts_updated', {
+      players: game.players.map(p => ({
+        name: p.name,
+        cardCount: p.cards.filter(c => c !== null).length
+      }))
+    });
   });
 
   // 11. CANTAR MENOR (call_lowest)
