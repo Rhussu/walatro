@@ -1,16 +1,20 @@
 {
-  "name": "servidor-celestina",
+  "name": "walatro-server",
   "version": "1.0.0",
-  "description": "Servidor de señalización WebRTC con Socket.IO",
+  "description": "Servidor de juego multijugador y señalización para Walatro",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^4.21.2",
     "socket.io": "^4.8.1"
   },
   "engines": {
-    "node": "22.x"
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
   }
 }
