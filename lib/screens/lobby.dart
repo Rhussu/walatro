@@ -79,7 +79,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
       // Podemos mandar el roomService por parámetro para no perder la conexión.
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => GameScreen(roomService: _roomService)),
+        MaterialPageRoute(builder: (context) => GameScreen(roomService: _roomService, myName: myName)),
       );
     };
 

@@ -1,14 +1,14 @@
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:walatro/models/player.dart'; // Asegúrate de importar el archivo anterior
 
 class RoomService {
-  late IO.Socket socket;
+  late io.Socket socket;
   
   String? currentRoom;
   String? myName;
 
   Function(String status)? onConnectionStatus;
-  Function(String roomCode, List<Player> users)? onRoomJoined; // ¡Ahora usa Player!
+  Function(String roomCode, List<Player> users)? onRoomJoined;
   Function(Player user)? onUserJoined;
   Function(String userName)? onUserLeft;
   Function(String senderName, String message)? onChatMessage;
@@ -17,8 +17,19 @@ class RoomService {
   Function(String errorMessage)? onError;
   Function(Map<String, dynamic> data)? onGameAction;
 
+  // Callbacks del juego de cartas Walatro
+  Function(Map<String, dynamic> data)? onRoundStarted;
+  Function(String activePlayer)? onTurnChanged;
+  Function(Map<String, dynamic> data)? onCardDrawn;
+  Function(Map<String, dynamic> data)? onCardDiscarded;
+  Function(Map<String, dynamic> data)? onCardBurned;
+  Function(Map<String, dynamic> data)? onPowerActivated;
+  Function(Map<String, dynamic> data)? onParityResolved;
+  Function(Map<String, dynamic> data)? onPrivatePeek;
+  Function(Map<String, dynamic> data)? onRoundEnded;
+
   void connect(String serverUrl) {
-    socket = IO.io(serverUrl, IO.OptionBuilder()
+    socket = io.io(serverUrl, io.OptionBuilder()
         .setTransports(['websocket'])
         .disableAutoConnect()
         .build());
@@ -45,9 +56,20 @@ class RoomService {
     socket.on('error', (data) => onError?.call(data.toString()));
     socket.on('game_action', (data) => onGameAction?.call(Map<String, dynamic>.from(data)));
 
-    // Nuevos eventos
+    // Nuevos eventos de lobby
     socket.on('ready_changed', (data) => onReadyChanged?.call(data['userName'], data['isReady']));
     socket.on('game_started', (_) => onGameStarted?.call());
+
+    // Eventos del juego de cartas
+    socket.on('round_started', (data) => onRoundStarted?.call(Map<String, dynamic>.from(data)));
+    socket.on('turn_changed', (data) => onTurnChanged?.call(data['activePlayer'].toString()));
+    socket.on('card_drawn', (data) => onCardDrawn?.call(Map<String, dynamic>.from(data)));
+    socket.on('card_discarded', (data) => onCardDiscarded?.call(Map<String, dynamic>.from(data)));
+    socket.on('card_burned', (data) => onCardBurned?.call(Map<String, dynamic>.from(data)));
+    socket.on('power_activated', (data) => onPowerActivated?.call(Map<String, dynamic>.from(data)));
+    socket.on('parity_resolved', (data) => onParityResolved?.call(Map<String, dynamic>.from(data)));
+    socket.on('private_peek_result', (data) => onPrivatePeek?.call(Map<String, dynamic>.from(data)));
+    socket.on('round_ended', (data) => onRoundEnded?.call(Map<String, dynamic>.from(data)));
   }
 
   void createRoom(String userName) {
@@ -66,7 +88,6 @@ class RoomService {
     }
   }
 
-  // Nuevas acciones para el Ready y Empezar
   void setReady(bool isReady) {
     if (currentRoom != null && myName != null) {
       socket.emit('set_ready', {'roomCode': currentRoom, 'userName': myName, 'isReady': isReady});
@@ -82,6 +103,76 @@ class RoomService {
   void sendGameAction(String actionType, dynamic payload) {
     if (currentRoom != null && myName != null) {
       socket.emit('game_action', {'roomCode': currentRoom, 'sender': myName, 'action': actionType, 'payload': payload});
+    }
+  }
+
+  // ==========================================
+  // EMISORES DE ACCIONES DEL JUEGO DE CARTAS
+  // ==========================================
+
+  /// Robar carta: 'deck' (mazo) o 'discard' (descarte)
+  void drawCard(String from) {
+    if (currentRoom != null) {
+      socket.emit('draw_card', {'roomCode': currentRoom, 'from': from, 'playerName': myName});
+    }
+  }
+
+  /// Jugar carta robada: 'SWAP' o 'DISCARD'
+  void playDrawnCard(String action, int? targetSlotIndex) {
+    if (currentRoom != null) {
+      socket.emit('play_drawn_card', {
+        'roomCode': currentRoom,
+        'action': action,
+        'targetSlotIndex': targetSlotIndex,
+        'playerName': myName,
+      });
+    }
+  }
+
+  /// Utilizar poder de 7, 8 o 9
+  void usePower(String powerType, {int? mySlot, String? targetPlayer, int? targetSlot}) {
+    if (currentRoom != null) {
+      socket.emit('use_power', {
+        'roomCode': currentRoom,
+        'powerType': powerType,
+        'mySlot': mySlot,
+        'targetPlayer': targetPlayer,
+        'targetSlot': targetSlot,
+        'playerName': myName,
+      });
+    }
+  }
+
+  /// Decidir no usar poder
+  void skipPower() {
+    if (currentRoom != null) {
+      socket.emit('skip_power', {'roomCode': currentRoom, 'playerName': myName});
+    }
+  }
+
+  /// Cantar paridad (enviado tras armar botón y tocar carta)
+  void claimParity(String targetPlayer, int slotIndex) {
+    if (currentRoom != null && myName != null) {
+      socket.emit('claim_parity', {
+        'roomCode': currentRoom,
+        'caller': myName,
+        'targetPlayer': targetPlayer,
+        'slotIndex': slotIndex,
+      });
+    }
+  }
+
+  /// Cantar "Soy el que tiene menos cartas"
+  void callLowest() {
+    if (currentRoom != null && myName != null) {
+      socket.emit('call_lowest', {'roomCode': currentRoom, 'playerName': myName});
+    }
+  }
+
+  /// Solicitar siguiente ronda
+  void requestNextRound() {
+    if (currentRoom != null) {
+      socket.emit('next_round', {'roomCode': currentRoom});
     }
   }
 

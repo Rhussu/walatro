@@ -48,11 +48,6 @@ class HomeScreen extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Icon(
-                  Icons.play_arrow,
-                  size: 100,
-                  color: Colors.white,
-                ),
                 style: ElevatedButton.styleFrom(
                   shape: const RoundedRectangleBorder(
                     borderRadius: BorderRadius.all(Radius.circular(10)),
@@ -60,6 +55,11 @@ class HomeScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(50),
                   backgroundColor:
                       Colors.transparent, // Fondo azul con opacidad
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  size: 100,
+                  color: Colors.white,
                 ),
               ),
             ),
