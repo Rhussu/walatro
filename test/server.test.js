@@ -114,8 +114,10 @@ test('Parity resolution: successful match burns cards', () => {
   assert.equal(callerHand[0], null); // Carta eliminada
 });
 
-test('Parity resolution: failed match gives penalty card', () => {
+test('Parity resolution: failed match gives discard penalty card and burns older discard cards', () => {
+  const olderCard = { rank: CardRank.FOUR, suit: CardSuit.CLUBS, isBurned: false };
   const topDiscard = { rank: CardRank.SEVEN, suit: CardSuit.HEARTS, isBurned: false };
+  const discardPile = [olderCard, topDiscard];
   const targetCard = { rank: CardRank.THREE, suit: CardSuit.SPADES, isBurned: false };
   const callerHand = [targetCard];
   const deck = [{ rank: CardRank.KING, suit: CardSuit.HEARTS }];
@@ -127,9 +129,26 @@ test('Parity resolution: failed match gives penalty card', () => {
     targetPlayer: 'Alice',
     callerHand,
     targetHand: callerHand,
-    deck
+    deck,
+    discardPile
   });
 
   assert.equal(res.success, false);
   assert.equal(callerHand.length, 2); // Carta original + penalización
+  assert.equal(callerHand[1], topDiscard); // La carta de penalización es la que estaba en el descarte
+  assert.equal(discardPile.length, 1); // Desapareció del descarte
+  assert.equal(discardPile[0], olderCard);
+  assert.equal(olderCard.isBurned, true); // La carta restante en el descarte queda quemada
+
+  // Intentar paridad con la carta restante quemada debe fallar
+  const secondAttempt = resolveParity({
+    topDiscard: discardPile[0],
+    targetCard: { rank: CardRank.FOUR, suit: CardSuit.DIAMONDS, isBurned: false },
+    caller: 'Bob',
+    targetPlayer: 'Bob',
+    callerHand: [{ rank: CardRank.FOUR, suit: CardSuit.DIAMONDS, isBurned: false }],
+    targetHand: [],
+    discardPile
+  });
+  assert.ok(secondAttempt.error);
 });

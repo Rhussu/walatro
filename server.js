@@ -250,13 +250,16 @@ io.on('connection', (socket) => {
 
     if (from === 'discard') {
       const topDiscard = game.discardPile[game.discardPile.length - 1];
-      // Regla estricta: No se puede robar si la carta fue quemada en paridad
+      // Regla estricta: No se puede robar si la carta fue quemada
       if (!topDiscard || topDiscard.isBurned) {
-        socket.emit('error', 'No puedes robar del descarte: la carta fue quemada en paridad.');
+        socket.emit('error', 'No puedes robar del descarte: la carta está quemada.');
         return;
       }
       drawnCard = game.discardPile.pop();
       drawnCard.isFromDiscard = true;
+      if (game.discardPile.length > 0) {
+        game.discardPile[game.discardPile.length - 1].isBurned = true;
+      }
     } else {
       // Caso 3 de fin de ronda: Mazo agotado
       if (game.deck.length === 0) {
@@ -270,12 +273,22 @@ io.on('connection', (socket) => {
     game.drawnCard = drawnCard;
     game.drawnFrom = from;
 
+    const currentTopDiscard = game.discardPile[game.discardPile.length - 1] || null;
+
     // Al que robó se le envía la carta completa; a los demás se les oculta si fue del mazo
-    socket.emit('card_drawn', { playerName, from, card: drawnCard });
+    socket.emit('card_drawn', {
+      playerName,
+      from,
+      card: drawnCard,
+      topDiscard: currentTopDiscard,
+      deckCount: game.deck.length
+    });
     socket.to(roomCode).emit('card_drawn', {
       playerName,
       from,
-      card: from === 'discard' ? drawnCard : null
+      card: from === 'discard' ? drawnCard : null,
+      topDiscard: currentTopDiscard,
+      deckCount: game.deck.length
     });
   });
 
@@ -309,7 +322,13 @@ io.on('connection', (socket) => {
 
     if (!discardedCard) return;
 
+    // Todas las cartas previas en el montón de descarte quedan quemadas
+    for (const c of game.discardPile) {
+      c.isBurned = true;
+    }
+
     discardedCard.isFaceUp = true;
+    discardedCard.isBurned = false;
     game.discardPile.push(discardedCard);
 
     const powerAvailable = canTriggerPower(discardedCard);
@@ -318,7 +337,8 @@ io.on('connection', (socket) => {
       playerName,
       card: discardedCard,
       replacedSlot: targetSlotIndex,
-      powerAvailable
+      powerAvailable,
+      topDiscard: discardedCard
     });
 
     if (powerAvailable) {
@@ -419,10 +439,13 @@ io.on('connection', (socket) => {
       targetPlayer,
       callerHand: callerPlayer.cards,
       targetHand: target.cards,
-      deck: game.deck
+      deck: game.deck,
+      discardPile: game.discardPile
     });
 
     if (result.error) return;
+
+    const newTopDiscard = game.discardPile[game.discardPile.length - 1] || null;
 
     io.in(roomCode).emit('parity_resolved', {
       caller,
@@ -430,7 +453,8 @@ io.on('connection', (socket) => {
       slotIndex,
       success: result.success,
       cardPlayed: result.cardPlayed,
-      penaltyCard: result.penaltyCard || null
+      penaltyCard: result.penaltyCard || null,
+      topDiscard: newTopDiscard
     });
 
     if (result.success) {

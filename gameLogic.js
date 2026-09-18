@@ -207,7 +207,7 @@ function calculateRoundScores(players, callerName, reason) {
 /**
  * Resuelve un intento de paridad
  */
-function resolveParity({ topDiscard, targetCard, caller, targetPlayer, callerHand, targetHand, deck }) {
+function resolveParity({ topDiscard, targetCard, caller, targetPlayer, callerHand, targetHand, deck, discardPile }) {
   if (!topDiscard || topDiscard.isBurned) {
     return { error: 'No hay carta válida en el descarte para paridad' };
   }
@@ -247,13 +247,31 @@ function resolveParity({ topDiscard, targetCard, caller, targetPlayer, callerHan
       burnedCard: targetCard
     };
   } else {
-    // Fallo de paridad
+    // Fallo de paridad: La carta de penalización se extrae del descarte (desaparece del montón)
+    let penaltyCard = null;
+    if (discardPile && discardPile.length > 0) {
+      penaltyCard = discardPile.pop();
+    } else if (topDiscard) {
+      penaltyCard = topDiscard;
+    } else if (deck && deck.length > 0) {
+      penaltyCard = deck.pop();
+    }
+
+    if (penaltyCard) {
+      penaltyCard.isFaceUp = false;
+      penaltyCard.isBurned = false;
+    }
+
+    // Todas las cartas que queden debajo en el descarte quedan quemadas permanentemente
+    if (discardPile && discardPile.length > 0) {
+      for (const card of discardPile) {
+        card.isBurned = true;
+      }
+    }
+
     if (isMine) {
-      // Conserva su carta y recibe carta de penalización (+1 carta)
-      let penaltyCard = null;
-      if (deck && deck.length > 0) {
-        penaltyCard = deck.pop();
-        penaltyCard.isFaceUp = false;
+      // Conserva su carta y recibe la carta del descarte como penalización (+1 carta)
+      if (penaltyCard) {
         callerHand.push(penaltyCard);
       }
       return {
@@ -262,17 +280,14 @@ function resolveParity({ topDiscard, targetCard, caller, targetPlayer, callerHan
         penaltyCard
       };
     } else {
-      // Se queda con la carta del rival + penalización (rival queda con 1 carta menos, llamador recibe 2)
+      // Se queda con la carta del rival + carta del descarte como penalización
       const targetSlot = targetHand.indexOf(targetCard);
       if (targetSlot !== -1) targetHand[targetSlot] = null;
 
       targetCard.isFaceUp = false;
       callerHand.push(targetCard);
 
-      let penaltyCard = null;
-      if (deck && deck.length > 0) {
-        penaltyCard = deck.pop();
-        penaltyCard.isFaceUp = false;
+      if (penaltyCard) {
         callerHand.push(penaltyCard);
       }
 
