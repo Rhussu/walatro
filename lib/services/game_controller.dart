@@ -116,10 +116,28 @@ class GameController extends ChangeNotifier {
       card = CardModel.fromJson(data['card'])..isFaceUp = true;
     }
 
+    List<CardModel> currentDiscard = List.from(_state.discardPile);
+    if (data['from'] == 'discard') {
+      if (currentDiscard.isNotEmpty) {
+        currentDiscard.removeLast();
+      }
+      if (data['topDiscard'] != null) {
+        var under = CardModel.fromJson(data['topDiscard'])..isBurned = true;
+        if (currentDiscard.isNotEmpty) {
+          currentDiscard[currentDiscard.length - 1] = under;
+        } else {
+          currentDiscard.add(under);
+        }
+      } else if (currentDiscard.isNotEmpty) {
+        currentDiscard.last.isBurned = true;
+      }
+    }
+
     _state = _state.copyWith(
       phase: GamePhase.cardDrawn,
       drawnCard: card,
       drawnFrom: data['from'],
+      discardPile: currentDiscard,
       drawPileCount: data['from'] == 'deck' ? max(0, _state.drawPileCount - 1) : _state.drawPileCount,
       lastEventMessage: '$player robó del ${data['from'] == 'deck' ? 'mazo' : 'descarte'}.',
     );
@@ -127,8 +145,13 @@ class GameController extends ChangeNotifier {
   }
 
   void _handleSocketCardDiscarded(Map<String, dynamic> data) {
-    CardModel discarded = CardModel.fromJson(data['card'])..isFaceUp = true;
-    List<CardModel> newDiscard = List.from(_state.discardPile)..add(discarded);
+    CardModel discarded = CardModel.fromJson(data['card'])
+      ..isFaceUp = true
+      ..isBurned = false;
+
+    // Todas las cartas previas en el descarte quedan quemadas
+    List<CardModel> newDiscard = _state.discardPile.map((c) => c.copyWith(isBurned: true)).toList();
+    newDiscard.add(discarded);
 
     bool powerAvailable = data['powerAvailable'] ?? false;
     String player = data['playerName'];
@@ -182,6 +205,9 @@ class GameController extends ChangeNotifier {
 
     if (success) {
       _triggerBurnEffect(cardPlayed);
+      if (_state.discardPile.isNotEmpty) {
+        _state.discardPile.last.isBurned = true;
+      }
       if (caller == targetPlayer) {
         if (target != null && slotIndex >= 0 && slotIndex < target.cards.length) {
           target.cards[slotIndex] = null;
@@ -203,11 +229,31 @@ class GameController extends ChangeNotifier {
         lastEventMessage: '🎯 ¡Paridad EXITOSA de $caller!',
       );
     } else {
+      // Fallo de paridad: la carta superior del descarte desaparece
+      List<CardModel> updatedDiscard = List.from(_state.discardPile);
+      if (data['topDiscard'] != null) {
+        var newTop = CardModel.fromJson(data['topDiscard'])..isBurned = true;
+        if (updatedDiscard.isNotEmpty) {
+          updatedDiscard.removeLast();
+          updatedDiscard.add(newTop);
+        } else {
+          updatedDiscard.add(newTop);
+        }
+      } else if (updatedDiscard.isNotEmpty) {
+        updatedDiscard.removeLast();
+      }
+
+      // Toda carta que quede en el descarte queda quemada permanentemente
+      for (var c in updatedDiscard) {
+        c.isBurned = true;
+      }
+
+      CardModel penalty = (data['penaltyCard'] != null)
+          ? CardModel.fromJson(data['penaltyCard'])
+          : (_state.topDiscard ?? CardModel(id: 'pen_${DateTime.now().millisecondsSinceEpoch}', suit: CardSuit.spades, rank: CardRank.ace, isFaceUp: false));
+      penalty.isFaceUp = false;
+
       if (caller == targetPlayer) {
-        CardModel penalty = (data['penaltyCard'] != null)
-            ? CardModel.fromJson(data['penaltyCard'])
-            : CardModel(id: 'pen_${DateTime.now().millisecondsSinceEpoch}', suit: CardSuit.spades, rank: CardRank.ace, isFaceUp: false);
-        penalty.isFaceUp = false;
         callerP?.cards.add(penalty);
       } else {
         if (target != null && slotIndex >= 0 && slotIndex < target.cards.length) {
@@ -215,14 +261,12 @@ class GameController extends ChangeNotifier {
         }
         cardPlayed.isFaceUp = false;
         callerP?.cards.add(cardPlayed);
-        CardModel penalty = (data['penaltyCard'] != null)
-            ? CardModel.fromJson(data['penaltyCard'])
-            : CardModel(id: 'pen_${DateTime.now().millisecondsSinceEpoch}', suit: CardSuit.spades, rank: CardRank.ace, isFaceUp: false);
-        penalty.isFaceUp = false;
         callerP?.cards.add(penalty);
       }
+
       _state = _state.copyWith(
-        lastEventMessage: '❌ ¡Paridad FALLIDA de $caller!',
+        discardPile: updatedDiscard,
+        lastEventMessage: '❌ ¡Paridad FALLIDA de $caller! Se llevó la carta de descarte.',
       );
     }
     notifyListeners();
@@ -561,6 +605,10 @@ class GameController extends ChangeNotifier {
     if (from == 'discard') {
       card = _state.discardPile.removeLast();
       card.isFromDiscard = true;
+      // La carta que queda expuesta debajo en el descarte queda quemada e inactiva
+      if (_state.discardPile.isNotEmpty) {
+        _state.discardPile.last.isBurned = true;
+      }
     } else {
       if (_simDeck.isEmpty) {
         _handleSimEmptyDeck();
@@ -601,7 +649,10 @@ class GameController extends ChangeNotifier {
   }
 
   void _handleSimDiscardCard(CardModel card) {
-    List<CardModel> newDiscard = List.from(_state.discardPile)..add(card);
+    // Quemar todas las cartas previas del descarte
+    List<CardModel> newDiscard = _state.discardPile.map((c) => c.copyWith(isBurned: true)).toList();
+    card.isBurned = false;
+    newDiscard.add(card);
 
     if (card.canTriggerPower && config.enableSpecialPowers) {
       _state = _state.copyWith(
@@ -609,7 +660,7 @@ class GameController extends ChangeNotifier {
         phase: GamePhase.powerChoice,
         pendingPowerCard: card,
         clearDrawnCard: true,
-        lastEventMessage: '¡Poder disponible de ${card.rankLabel}! ¿Deseas usarlo?',
+        lastEventMessage: '¡Poder disponible de ${card.rankLabel}! Toca cartas en el tablero para activarlo.',
       );
     } else {
       _state = _state.copyWith(
@@ -676,7 +727,7 @@ class GameController extends ChangeNotifier {
 
   void _simClaimParity(String targetPlayer, int slotIndex) {
     CardModel? top = _state.topDiscard;
-    if (top == null) return;
+    if (top == null || top.isBurned) return;
 
     var target = _state.getPlayer(targetPlayer);
     if (target == null || slotIndex >= target.cards.length || target.cards[slotIndex] == null) return;
@@ -686,8 +737,9 @@ class GameController extends ChangeNotifier {
     bool isMine = targetPlayer == myPlayerName;
 
     if (isMatch) {
-      // Éxito de paridad: carta quemada
+      // Éxito de paridad: carta objetivo y la del descarte quedan quemadas
       candidate.isBurned = true;
+      top.isBurned = true;
       _triggerBurnEffect(candidate);
 
       if (isMine) {
@@ -711,14 +763,26 @@ class GameController extends ChangeNotifier {
         );
       }
     } else {
-      // Fallo de paridad
+      // Fallo de paridad: La carta de castigo es la del descarte y desaparece del montón
+      CardModel penaltyCard;
+      if (_state.discardPile.isNotEmpty) {
+        penaltyCard = _state.discardPile.removeLast();
+      } else {
+        penaltyCard = _simDeck.isNotEmpty ? _simDeck.removeLast() : top;
+      }
+      penaltyCard.isFaceUp = false;
+      penaltyCard.isBurned = false;
+
+      // Toda carta restante en descarte queda quemada permanentemente
+      for (var c in _state.discardPile) {
+        c.isBurned = true;
+      }
+
       if (isMine) {
-        // Falló y era suya: se queda con su carta + carta de castigo (+1 carta)
-        CardModel penaltyCard = _simDeck.isNotEmpty ? _simDeck.removeLast() : top;
-        penaltyCard.isFaceUp = false;
+        // Falló y era suya: se queda con su carta + carta de descarte como castigo (+1)
         target.cards.add(penaltyCard);
         _state = _state.copyWith(
-          lastEventMessage: '❌ Fallaste paridad con tu carta. Recibes carta de penalización (+1).',
+          lastEventMessage: '❌ Fallaste paridad con tu carta. Te llevas la carta del descarte (+1).',
         );
       } else {
         // Falló y era ajena: se queda con ambas cartas y el rival queda con -1
@@ -727,13 +791,10 @@ class GameController extends ChangeNotifier {
         if (me != null) {
           candidate.isFaceUp = false;
           me.cards.add(candidate);
-          if (_simDeck.isNotEmpty) {
-            CardModel penalty = _simDeck.removeLast()..isFaceUp = false;
-            me.cards.add(penalty);
-          }
+          me.cards.add(penaltyCard);
         }
         _state = _state.copyWith(
-          lastEventMessage: '❌ Fallaste paridad sobre $targetPlayer. Te llevas 2 cartas y el rival se beneficia (-1).',
+          lastEventMessage: '❌ Fallaste paridad sobre $targetPlayer. Te llevas la carta del rival y la del descarte (+2).',
         );
       }
     }

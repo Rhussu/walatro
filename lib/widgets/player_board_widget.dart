@@ -8,6 +8,7 @@ class PlayerBoardWidget extends StatelessWidget {
   final bool isLocalPlayer;
   final bool isActiveTurn;
   final bool isParityArmed;
+  final bool isPowerSelectable;
   final int? selectedSlot;
   final Function(int slotIndex)? onCardTapped;
   final double cardWidth;
@@ -19,6 +20,7 @@ class PlayerBoardWidget extends StatelessWidget {
     required this.isLocalPlayer,
     this.isActiveTurn = false,
     this.isParityArmed = false,
+    this.isPowerSelectable = false,
     this.selectedSlot,
     this.onCardTapped,
     this.cardWidth = 68,
@@ -27,19 +29,34 @@ class PlayerBoardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Color borderColor = Colors.white24;
+    if (isPowerSelectable) {
+      borderColor = isLocalPlayer ? Colors.cyanAccent : Colors.greenAccent;
+    } else if (isActiveTurn) {
+      borderColor = Colors.amberAccent;
+    } else if (isParityArmed) {
+      borderColor = Colors.redAccent;
+    }
+
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E).withAlpha(220),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isActiveTurn
-              ? Colors.amberAccent
-              : (isParityArmed ? Colors.redAccent : Colors.white24),
-          width: isActiveTurn ? 2.5 : 1.5,
+          color: borderColor,
+          width: (isActiveTurn || isPowerSelectable) ? 2.5 : 1.5,
         ),
         boxShadow: [
-          if (isActiveTurn)
+          if (isPowerSelectable)
+            BoxShadow(
+              color: isLocalPlayer
+                  ? Colors.cyanAccent.withAlpha(160)
+                  : Colors.greenAccent.withAlpha(160),
+              blurRadius: 10,
+              spreadRadius: 2,
+            )
+          else if (isActiveTurn)
             const BoxShadow(
               color: Colors.amberAccent,
               blurRadius: 8,
@@ -169,7 +186,7 @@ class PlayerBoardWidget extends StatelessWidget {
       width: cardWidth,
       height: cardHeight,
       isSelected: selectedSlot == slotIndex,
-      isSelectable: isParityArmed || isSelectable,
+      isSelectable: isParityArmed || isPowerSelectable || isSelectable,
       onTap: () {
         if (onCardTapped != null) {
           onCardTapped!(slotIndex);

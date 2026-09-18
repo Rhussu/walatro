@@ -127,5 +127,33 @@ void main() {
       expect(config.deckEmptyPenalty, equals(100));
       expect(config.peekDurationSeconds, equals(5));
     });
+
+    test('Parity failure removes top discard card and burns remaining discard', () {
+      final controller = GameController(myPlayerName: 'HERO');
+      controller.startSimulatedGame();
+
+      final initialTopDiscard = controller.state.topDiscard!;
+      final heroCardsCount = controller.myPlayer!.cards.length;
+
+      // Forzar intento de paridad fallido con una carta que no coincide
+      controller.toggleParityArm();
+      expect(controller.isParityArmed, isTrue);
+
+      // Si la carta del slot 0 coincide, cambiamos rank para asegurar fallo
+      controller.myPlayer!.cards[0] = CardModel(
+        id: 'different_card',
+        suit: CardSuit.clubs,
+        rank: initialTopDiscard.rank == CardRank.two ? CardRank.three : CardRank.two,
+      );
+
+      controller.claimParity('HERO', 0);
+
+      // HERO debió recibir la carta de penalización (la del descarte)
+      expect(controller.myPlayer!.cards.length, equals(heroCardsCount + 1));
+      // El descarte previo ya no tiene esa carta
+      expect(controller.state.discardPile.contains(initialTopDiscard), isFalse);
+
+      controller.dispose();
+    });
   });
 }

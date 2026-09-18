@@ -131,11 +131,10 @@ class _PlayingCardWidgetState extends State<PlayingCardWidget>
               children: [
                 TweenAnimationBuilder<double>(
                   tween: Tween<double>(
-                    begin: card.isFaceUp ? 180.0 : 0.0,
                     end: card.isFaceUp ? 180.0 : 0.0,
                   ),
-                  duration: const Duration(milliseconds: 380),
-                  curve: Curves.easeInOutQuad,
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeInOutBack,
                   builder: (context, angleDegrees, _) {
                     final isFront = angleDegrees >= 90.0;
                     final angleRad = angleDegrees * (pi / 180.0);
@@ -347,14 +346,20 @@ class _PlayingCardWidgetState extends State<PlayingCardWidget>
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: Colors.deepOrangeAccent.withAlpha((200 + (_controller.value * 55)).toInt()),
+              width: 2.5,
+            ),
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
               colors: [
-                Colors.deepOrange.withAlpha((190 + (_controller.value * 65)).toInt()),
-                Colors.amber.withAlpha(120),
-                Colors.black.withAlpha(70),
+                Colors.black.withAlpha(210),
+                Colors.deepOrange.withAlpha((180 + (_controller.value * 70)).toInt()),
+                Colors.orangeAccent.withAlpha(140),
+                Colors.black.withAlpha(160),
               ],
+              stops: const [0.0, 0.45, 0.8, 1.0],
             ),
           ),
           child: Center(
@@ -363,17 +368,42 @@ class _PlayingCardWidgetState extends State<PlayingCardWidget>
               children: [
                 Icon(
                   Icons.local_fire_department,
-                  color: Colors.amberAccent,
-                  size: 34 + (_controller.value * 6),
+                  color: Colors.yellowAccent,
+                  size: 32 + (_controller.value * 8),
+                  shadows: const [
+                    Shadow(color: Colors.redAccent, blurRadius: 10),
+                    Shadow(color: Colors.black, blurRadius: 4),
+                  ],
                 ),
+                const SizedBox(height: 2),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(200),
+                    borderRadius: BorderRadius.circular(3),
+                    border: Border.all(color: Colors.orangeAccent, width: 1),
+                  ),
+                  child: const Text(
+                    '🔥 QUEMADA 🔥',
+                    style: TextStyle(
+                      color: Colors.amberAccent,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'Courier',
+                      letterSpacing: 0.5,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 3)],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
                 const Text(
-                  'QUEMADA',
+                  'INACTIVA',
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
+                    color: Colors.white70,
+                    fontSize: 7,
+                    fontWeight: FontWeight.bold,
                     fontFamily: 'Courier',
-                    shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                    letterSpacing: 1,
                   ),
                 ),
               ],

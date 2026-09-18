@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:walatro/models/card_model.dart';
 import 'package:walatro/models/game_state.dart';
 import 'package:walatro/services/game_controller.dart';
 import 'package:walatro/services/room_services.dart';
 import 'package:walatro/widgets/center_table_widget.dart';
 import 'package:walatro/widgets/player_board_widget.dart';
-import 'package:walatro/widgets/power_action_dialog.dart';
 import 'package:walatro/widgets/round_summary_dialog.dart';
 import 'package:walatro/widgets/rules_dialog.dart';
 
@@ -21,6 +21,7 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   late GameController _controller;
   int? _selectedSwapSlot;
+  int? _selectedPowerMySlot;
 
   @override
   void initState() {
@@ -66,6 +67,49 @@ class _GameScreenState extends State<GameScreen> {
       _controller.swapDrawnCard(slotIndex);
       return;
     }
+
+    // 3. Selección táctil directa en el tablero para Poderes (7, 8 y 9)
+    if (_controller.isMyTurn &&
+        _controller.state.phase == GamePhase.powerChoice &&
+        _controller.state.pendingPowerCard != null) {
+      final powerCard = _controller.state.pendingPowerCard!;
+      final isMine = owner == _controller.myPlayerName;
+
+      if (powerCard.rank == CardRank.seven) {
+        // Poder 7: Mirar carta propia directamente en el tablero
+        if (isMine) {
+          _controller.usePower('PEEK_OWN', mySlot: slotIndex);
+        }
+      } else if (powerCard.rank == CardRank.eight) {
+        // Poder 8: Mirar carta de un rival directamente en su tablero
+        if (!isMine) {
+          _controller.usePower('PEEK_OTHER', targetPlayer: owner, targetSlot: slotIndex);
+        }
+      } else if (powerCard.rank == CardRank.nine) {
+        // Poder 9: Intercambio en 2 pasos
+        if (isMine) {
+          // Paso 1: Seleccionar propia
+          setState(() {
+            _selectedPowerMySlot = slotIndex;
+          });
+        } else {
+          // Paso 2: Tocar rival para ejecutar intercambio
+          if (_selectedPowerMySlot != null) {
+            final mySlot = _selectedPowerMySlot!;
+            setState(() {
+              _selectedPowerMySlot = null;
+            });
+            _controller.usePower(
+              'SWAP',
+              mySlot: mySlot,
+              targetPlayer: owner,
+              targetSlot: slotIndex,
+            );
+          }
+        }
+      }
+      return;
+    }
   }
 
   @override
@@ -76,6 +120,18 @@ class _GameScreenState extends State<GameScreen> {
         final state = _controller.state;
         final myPlayer = _controller.myPlayer;
         final opponents = state.players.where((p) => p.name != _controller.myPlayerName).toList();
+
+        final bool isPowerChoice = _controller.isMyTurn &&
+            state.phase == GamePhase.powerChoice &&
+            state.pendingPowerCard != null;
+
+        final bool isOpponentsPowerTarget = isPowerChoice &&
+            (state.pendingPowerCard!.rank == CardRank.eight ||
+             (state.pendingPowerCard!.rank == CardRank.nine && _selectedPowerMySlot != null));
+
+        final bool isMyPowerTarget = isPowerChoice &&
+            (state.pendingPowerCard!.rank == CardRank.seven ||
+             state.pendingPowerCard!.rank == CardRank.nine);
 
         return Scaffold(
           extendBodyBehindAppBar: true,
@@ -174,6 +230,7 @@ class _GameScreenState extends State<GameScreen> {
                                         isLocalPlayer: false,
                                         isActiveTurn: state.activePlayerName == op.name,
                                         isParityArmed: _controller.isParityArmed,
+                                        isPowerSelectable: isOpponentsPowerTarget,
                                         cardWidth: 54,
                                         cardHeight: 76,
                                         onCardTapped: (slot) => _handleCardTap(op.name, slot),
@@ -186,7 +243,7 @@ class _GameScreenState extends State<GameScreen> {
                               const SizedBox(height: 14),
                             ],
 
-                            // 2. Zona central (Mazo de robo, Descarte, Paridad)
+                            // 2. Zona central (Mazo de robo, Descarte, Paridad, Poder)
                             CenterTableWidget(
                               gameState: state,
                               isMyTurn: _controller.isMyTurn,
@@ -197,6 +254,12 @@ class _GameScreenState extends State<GameScreen> {
                               onToggleParity: () => _controller.toggleParityArm(),
                               onDiscardDrawn: () => _controller.discardDrawnCard(),
                               onCallLowest: () => _controller.callLowest(),
+                              onSkipPower: () {
+                                setState(() {
+                                  _selectedPowerMySlot = null;
+                                });
+                                _controller.skipPower();
+                              },
                             ),
                             const SizedBox(height: 14),
 
@@ -207,6 +270,8 @@ class _GameScreenState extends State<GameScreen> {
                                 isLocalPlayer: true,
                                 isActiveTurn: _controller.isMyTurn,
                                 isParityArmed: _controller.isParityArmed,
+                                isPowerSelectable: isMyPowerTarget,
+                                selectedSlot: _selectedPowerMySlot,
                                 cardWidth: 70,
                                 cardHeight: 100,
                                 onCardTapped: (slot) => _handleCardTap(_controller.myPlayerName, slot),
@@ -218,23 +283,6 @@ class _GameScreenState extends State<GameScreen> {
                   ],
                 ),
               ),
-
-              // Modal flotante de selección de poder (7, 8 o 9)
-              if (state.phase == GamePhase.powerChoice && state.pendingPowerCard != null)
-                PowerActionDialog(
-                  powerCard: state.pendingPowerCard!,
-                  gameState: state,
-                  myPlayerName: _controller.myPlayerName,
-                  onUsePower: (type, {mySlot, targetPlayer, targetSlot}) {
-                    _controller.usePower(
-                      type,
-                      mySlot: mySlot,
-                      targetPlayer: targetPlayer,
-                      targetSlot: targetSlot,
-                    );
-                  },
-                  onSkipPower: () => _controller.skipPower(),
-                ),
 
               // Modal de fin de ronda y puntuaciones
               if (state.phase == GamePhase.roundEnd)
@@ -249,7 +297,6 @@ class _GameScreenState extends State<GameScreen> {
       },
     );
   }
-
   Widget _buildStatusBar(GameState state) {
     if (state.phase == GamePhase.initialPeek) {
       return Container(
@@ -275,6 +322,39 @@ class _GameScreenState extends State<GameScreen> {
       );
     }
 
+    if (state.phase == GamePhase.powerChoice && state.pendingPowerCard != null) {
+      String msg = '';
+      Color bgColor = Colors.amber.shade900;
+      if (state.pendingPowerCard!.rank == CardRank.seven) {
+        msg = '✨ PODER 7: TOCA UNA DE TUS CARTAS EN TU TABLERO PARA MIRARLA';
+        bgColor = Colors.cyan.shade900;
+      } else if (state.pendingPowerCard!.rank == CardRank.eight) {
+        msg = '✨ PODER 8: TOCA UNA CARTA EN EL TABLERO DE UN RIVAL PARA MIRARLA';
+        bgColor = Colors.green.shade900;
+      } else if (state.pendingPowerCard!.rank == CardRank.nine) {
+        if (_selectedPowerMySlot == null) {
+          msg = '✨ PODER 9: 1º TOCA UNA DE TUS CARTAS PARA INTERCAMBIAR';
+        } else {
+          msg = '✨ PODER 9: 2º AHORA TOCA LA CARTA DEL RIVAL A INTERCAMBIAR CON TU SLOT $_selectedPowerMySlot';
+        }
+      }
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        color: bgColor,
+        child: Text(
+          msg,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontFamily: 'Courier',
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+      );
+    }
 
     if (state.lastEventMessage != null) {
       return Container(

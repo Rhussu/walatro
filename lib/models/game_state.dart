@@ -25,6 +25,7 @@ class GameState {
   final int? revealedCardSlot;
   final CardModel? burnedCard; // Carta recién quemada (efecto fuego)
   final CardModel? powerActivatedCard; // Carta con poder activo (aura brillante)
+  final int? selectedMyPowerSlot; // Slot propio seleccionado para intercambio (Poder 9)
   final String? lastEventMessage;
   final String? roundEndReason;
   final String? roundEndCaller;
@@ -44,6 +45,7 @@ class GameState {
     this.revealedCardSlot,
     this.burnedCard,
     this.powerActivatedCard,
+    this.selectedMyPowerSlot,
     this.lastEventMessage,
     this.roundEndReason,
     this.roundEndCaller,
@@ -51,6 +53,10 @@ class GameState {
         players = players ?? [];
 
   CardModel? get topDiscard => discardPile.isNotEmpty ? discardPile.last : null;
+
+  /// Carta expuesta inmediatamente debajo de la cima del descarte
+  CardModel? get underlyingDiscard =>
+      discardPile.length > 1 ? discardPile[discardPile.length - 2] : null;
 
   /// ¿La carta superior del descarte se puede robar?
   /// Regla: solo si NO fue quemada por paridad
@@ -87,6 +93,8 @@ class GameState {
     bool clearBurnedCard = false,
     CardModel? powerActivatedCard,
     bool clearPowerActivated = false,
+    int? selectedMyPowerSlot,
+    bool clearSelectedMyPowerSlot = false,
     String? lastEventMessage,
     String? roundEndReason,
     String? roundEndCaller,
@@ -106,6 +114,9 @@ class GameState {
       revealedCardSlot: clearRevealedPeek ? null : (revealedCardSlot ?? this.revealedCardSlot),
       burnedCard: clearBurnedCard ? null : (burnedCard ?? this.burnedCard),
       powerActivatedCard: clearPowerActivated ? null : (powerActivatedCard ?? this.powerActivatedCard),
+      selectedMyPowerSlot: clearSelectedMyPowerSlot
+          ? null
+          : (selectedMyPowerSlot ?? this.selectedMyPowerSlot),
       lastEventMessage: lastEventMessage ?? this.lastEventMessage,
       roundEndReason: roundEndReason ?? this.roundEndReason,
       roundEndCaller: roundEndCaller ?? this.roundEndCaller,
