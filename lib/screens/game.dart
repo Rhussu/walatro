@@ -36,6 +36,13 @@ class _GameScreenState extends State<GameScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _controller.startSimulatedGame();
       });
+    } else {
+      // Si entramos con backend, solicitamos sync si aún no tenemos jugadores cargados
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_controller.state.players.isEmpty) {
+          widget.roomService?.requestGameSync();
+        }
+      });
     }
   }
 
@@ -268,30 +275,6 @@ class _GameScreenState extends State<GameScreen> {
       );
     }
 
-    if (state.revealedCardForPeek != null) {
-      final c = state.revealedCardForPeek!;
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-        color: Colors.cyan.shade900,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.auto_awesome, color: Colors.cyanAccent, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              'ESPIANDO A ${state.revealedCardOwner}: ${c.rankLabel}${c.suitSymbol} (${c.scoreValue} pts)',
-              style: const TextStyle(
-                color: Colors.white,
-                fontFamily: 'Courier',
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
 
     if (state.lastEventMessage != null) {
       return Container(

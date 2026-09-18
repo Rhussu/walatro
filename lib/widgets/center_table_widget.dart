@@ -176,33 +176,43 @@ class CenterTableWidget extends StatelessWidget {
   }
 
   Widget _buildDrawnCardSection() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.yellowAccent, width: 2),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: const [BoxShadow(color: Colors.yellowAccent, blurRadius: 10)],
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutBack,
+      builder: (context, scale, child) {
+        return Transform.scale(
+          scale: scale,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.yellowAccent, width: 2),
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: const [BoxShadow(color: Colors.yellowAccent, blurRadius: 10)],
+                ),
+                child: PlayingCardWidget(
+                  card: gameState.drawnCard,
+                  width: 76,
+                  height: 108,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'ROBADA',
+                style: TextStyle(
+                  color: Colors.yellowAccent,
+                  fontFamily: 'Courier',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+            ],
           ),
-          child: PlayingCardWidget(
-            card: gameState.drawnCard,
-            width: 76,
-            height: 108,
-          ),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'ROBADA',
-          style: TextStyle(
-            color: Colors.yellowAccent,
-            fontFamily: 'Courier',
-            fontWeight: FontWeight.bold,
-            fontSize: 11,
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 

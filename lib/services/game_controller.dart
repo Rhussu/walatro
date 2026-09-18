@@ -47,6 +47,8 @@ class GameController extends ChangeNotifier {
     roomService?.onParityResolved = (data) => _handleSocketParityResolved(data);
     roomService?.onPrivatePeek = (data) => _handleSocketPrivatePeek(data);
     roomService?.onRoundEnded = (data) => _handleSocketRoundEnded(data);
+    roomService?.onHandUpdated = (data) => _handleSocketHandUpdated(data);
+    roomService?.onPlayerCountsUpdated = (data) => _handleSocketPlayerCountsUpdated(data);
   }
 
   // ==========================================
@@ -169,18 +171,58 @@ class GameController extends ChangeNotifier {
 
   void _handleSocketParityResolved(Map<String, dynamic> data) {
     _isParityArmed = false;
-    String caller = data['caller'];
-    bool success = data['success'];
+    String caller = data['caller'] ?? '';
+    String targetPlayer = data['targetPlayer'] ?? caller;
+    int slotIndex = data['slotIndex'] ?? 0;
+    bool success = data['success'] ?? false;
     CardModel cardPlayed = CardModel.fromJson(data['cardPlayed']);
+
+    var target = _state.getPlayer(targetPlayer);
+    var callerP = _state.getPlayer(caller);
 
     if (success) {
       _triggerBurnEffect(cardPlayed);
+      if (caller == targetPlayer) {
+        if (target != null && slotIndex >= 0 && slotIndex < target.cards.length) {
+          target.cards[slotIndex] = null;
+        }
+      } else {
+        if (target != null && slotIndex >= 0 && slotIndex < target.cards.length) {
+          target.cards[slotIndex] = null;
+        }
+        if (callerP != null) {
+          int myIdx = callerP.cards.indexWhere((c) => c != null);
+          if (myIdx != -1 && target != null) {
+            var givenCard = callerP.cards[myIdx];
+            callerP.cards[myIdx] = null;
+            target.cards[slotIndex] = givenCard;
+          }
+        }
+      }
       _state = _state.copyWith(
-        lastEventMessage: '🎯 ¡Paridad EXITOSA de $caller con ${cardPlayed.rankLabel}! Carta quemada.',
+        lastEventMessage: '🎯 ¡Paridad EXITOSA de $caller!',
       );
     } else {
+      if (caller == targetPlayer) {
+        CardModel penalty = (data['penaltyCard'] != null)
+            ? CardModel.fromJson(data['penaltyCard'])
+            : CardModel(id: 'pen_${DateTime.now().millisecondsSinceEpoch}', suit: CardSuit.spades, rank: CardRank.ace, isFaceUp: false);
+        penalty.isFaceUp = false;
+        callerP?.cards.add(penalty);
+      } else {
+        if (target != null && slotIndex >= 0 && slotIndex < target.cards.length) {
+          target.cards[slotIndex] = null;
+        }
+        cardPlayed.isFaceUp = false;
+        callerP?.cards.add(cardPlayed);
+        CardModel penalty = (data['penaltyCard'] != null)
+            ? CardModel.fromJson(data['penaltyCard'])
+            : CardModel(id: 'pen_${DateTime.now().millisecondsSinceEpoch}', suit: CardSuit.spades, rank: CardRank.ace, isFaceUp: false);
+        penalty.isFaceUp = false;
+        callerP?.cards.add(penalty);
+      }
       _state = _state.copyWith(
-        lastEventMessage: '❌ ¡Paridad FALLIDA de $caller con ${cardPlayed.rankLabel}! Penalizado.',
+        lastEventMessage: '❌ ¡Paridad FALLIDA de $caller!',
       );
     }
     notifyListeners();
@@ -188,28 +230,84 @@ class GameController extends ChangeNotifier {
 
   void _handleSocketPrivatePeek(Map<String, dynamic> data) {
     CardModel card = CardModel.fromJson(data['card'])..isFaceUp = true;
-    _state = _state.copyWith(
-      revealedCardForPeek: card,
-      revealedCardOwner: data['targetPlayer'],
-      revealedCardSlot: data['slotIndex'],
-      lastEventMessage: 'Viendo carta de ${data['targetPlayer']}: ${card.rankLabel}${card.suitSymbol}',
-    );
-    notifyListeners();
+    String targetPlayer = data['targetPlayer'];
+    int slotIndex = data['slotIndex'];
 
-    Timer(const Duration(seconds: 4), () {
-      _state = _state.copyWith(clearRevealedPeek: true);
+    var target = _state.getPlayer(targetPlayer);
+    if (target != null && slotIndex >= 0 && slotIndex < target.cards.length) {
+      target.cards[slotIndex] = card;
       notifyListeners();
-    });
+
+      Timer(const Duration(milliseconds: 3500), () {
+        if (slotIndex < target.cards.length && target.cards[slotIndex] != null) {
+          target.cards[slotIndex]!.isFaceUp = false;
+          notifyListeners();
+        }
+      });
+    }
   }
 
   void _handleSocketRoundEnded(Map<String, dynamic> data) {
+    List<PlayerGameState> updatedPlayers = [];
+    if (data['players'] != null) {
+      for (var pJson in (data['players'] as List)) {
+        var rawCards = pJson['cards'] as List? ?? [];
+        List<CardModel?> pCards = rawCards.map((c) => c != null ? (CardModel.fromJson(c)..isFaceUp = true) : null).toList();
+        updatedPlayers.add(PlayerGameState(
+          name: pJson['name'] ?? '',
+          cards: pCards,
+          roundScore: pJson['roundScore'] ?? 0,
+          totalScore: pJson['totalScore'] ?? 0,
+        ));
+      }
+    } else {
+      updatedPlayers = _state.players;
+    }
+
     _state = _state.copyWith(
+      players: updatedPlayers,
       phase: GamePhase.roundEnd,
       roundEndReason: data['reason'],
       roundEndCaller: data['caller'],
       lastEventMessage: '¡Fin de la ronda! Se cuentan los puntos.',
     );
     notifyListeners();
+  }
+
+  void _handleSocketHandUpdated(Map<String, dynamic> data) {
+    if (data['myHand'] != null) {
+      var raw = data['myHand'] as List;
+      List<CardModel?> myCards = raw.map((c) => c != null ? CardModel.fromJson(c) : null).toList();
+      var me = myPlayer;
+      if (me != null) {
+        me.cards = myCards;
+        notifyListeners();
+      }
+    }
+  }
+
+  void _handleSocketPlayerCountsUpdated(Map<String, dynamic> data) {
+    if (data['players'] != null) {
+      for (var pInfo in (data['players'] as List)) {
+        String pName = pInfo['name'];
+        if (pName != myPlayerName) {
+          var p = _state.getPlayer(pName);
+          if (p != null) {
+            int count = pInfo['cardCount'] ?? 4;
+            int currentActive = p.cards.where((c) => c != null).length;
+            if (currentActive != count) {
+              p.cards = List.generate(count, (i) => CardModel(
+                id: '${pName}_$i',
+                suit: CardSuit.spades,
+                rank: CardRank.ace,
+                isFaceUp: false,
+              ));
+            }
+          }
+        }
+      }
+      notifyListeners();
+    }
   }
 
   // ==========================================
@@ -320,6 +418,7 @@ class GameController extends ChangeNotifier {
     if (roomService != null) {
       roomService!.requestNextRound();
     } else {
+      _state = _state.copyWith(roundNumber: _state.roundNumber + 1);
       startSimulatedGame();
     }
   }
@@ -400,14 +499,18 @@ class GameController extends ChangeNotifier {
     // Carta inicial en el mazo de descarte
     CardModel initialDiscard = deck.removeLast()..isFaceUp = true;
 
+    // Rotación del jugador inicial con cada ronda
+    int startingIndex = (_state.roundNumber - 1) % names.length;
+    String startingPlayer = names[startingIndex];
+
     _state = GameState(
       roundNumber: _state.roundNumber,
       phase: GamePhase.initialPeek,
-      activePlayerName: myPlayerName,
+      activePlayerName: startingPlayer,
       drawPileCount: deck.length,
       discardPile: [initialDiscard],
       players: players,
-      lastEventMessage: '¡Comienza la partida! Memoriza tus 2 cartas inferiores.',
+      lastEventMessage: '¡Comienza la ronda ${_state.roundNumber}! Memoriza tus 2 cartas inferiores.',
     );
 
     _simDeck = deck;

@@ -129,7 +129,32 @@ class _PlayingCardWidgetState extends State<PlayingCardWidget>
             ),
             child: Stack(
               children: [
-                card.isFaceUp ? _buildFaceUpCard(card) : _buildFaceDownCard(),
+                TweenAnimationBuilder<double>(
+                  tween: Tween<double>(
+                    begin: card.isFaceUp ? 180.0 : 0.0,
+                    end: card.isFaceUp ? 180.0 : 0.0,
+                  ),
+                  duration: const Duration(milliseconds: 380),
+                  curve: Curves.easeInOutQuad,
+                  builder: (context, angleDegrees, _) {
+                    final isFront = angleDegrees >= 90.0;
+                    final angleRad = angleDegrees * (pi / 180.0);
+
+                    return Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, 0.001)
+                        ..rotateY(angleRad),
+                      child: isFront
+                          ? Transform(
+                              alignment: Alignment.center,
+                              transform: Matrix4.rotationY(pi),
+                              child: _buildFaceUpCard(card),
+                            )
+                          : _buildFaceDownCard(),
+                    );
+                  },
+                ),
                 if (isBurned) _buildBurnOverlay(),
                 if (isPowerGlow) _buildPowerGlowOverlay(),
                 if (widget.slotIndex != null) _buildSlotBadge(widget.slotIndex!),

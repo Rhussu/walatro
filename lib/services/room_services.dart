@@ -18,7 +18,19 @@ class RoomService {
   Function(Map<String, dynamic> data)? onGameAction;
 
   // Callbacks del juego de cartas Walatro
-  Function(Map<String, dynamic> data)? onRoundStarted;
+  Map<String, dynamic>? _bufferedRoundStartedData;
+  Function(Map<String, dynamic> data)? _onRoundStarted;
+
+  Function(Map<String, dynamic> data)? get onRoundStarted => _onRoundStarted;
+  set onRoundStarted(Function(Map<String, dynamic> data)? callback) {
+    _onRoundStarted = callback;
+    if (callback != null && _bufferedRoundStartedData != null) {
+      final cached = _bufferedRoundStartedData!;
+      _bufferedRoundStartedData = null;
+      callback(cached);
+    }
+  }
+
   Function(String activePlayer)? onTurnChanged;
   Function(Map<String, dynamic> data)? onCardDrawn;
   Function(Map<String, dynamic> data)? onCardDiscarded;
@@ -27,6 +39,8 @@ class RoomService {
   Function(Map<String, dynamic> data)? onParityResolved;
   Function(Map<String, dynamic> data)? onPrivatePeek;
   Function(Map<String, dynamic> data)? onRoundEnded;
+  Function(Map<String, dynamic> data)? onHandUpdated;
+  Function(Map<String, dynamic> data)? onPlayerCountsUpdated;
 
   void connect(String serverUrl) {
     socket = io.io(serverUrl, io.OptionBuilder()
@@ -58,10 +72,20 @@ class RoomService {
 
     // Nuevos eventos de lobby
     socket.on('ready_changed', (data) => onReadyChanged?.call(data['userName'], data['isReady']));
-    socket.on('game_started', (_) => onGameStarted?.call());
+    socket.on('game_started', (_) {
+      _bufferedRoundStartedData = null;
+      onGameStarted?.call();
+    });
 
     // Eventos del juego de cartas
-    socket.on('round_started', (data) => onRoundStarted?.call(Map<String, dynamic>.from(data)));
+    socket.on('round_started', (data) {
+      final map = Map<String, dynamic>.from(data);
+      if (_onRoundStarted != null) {
+        _onRoundStarted!(map);
+      } else {
+        _bufferedRoundStartedData = map;
+      }
+    });
     socket.on('turn_changed', (data) => onTurnChanged?.call(data['activePlayer'].toString()));
     socket.on('card_drawn', (data) => onCardDrawn?.call(Map<String, dynamic>.from(data)));
     socket.on('card_discarded', (data) => onCardDiscarded?.call(Map<String, dynamic>.from(data)));
@@ -70,6 +94,8 @@ class RoomService {
     socket.on('parity_resolved', (data) => onParityResolved?.call(Map<String, dynamic>.from(data)));
     socket.on('private_peek_result', (data) => onPrivatePeek?.call(Map<String, dynamic>.from(data)));
     socket.on('round_ended', (data) => onRoundEnded?.call(Map<String, dynamic>.from(data)));
+    socket.on('hand_updated', (data) => onHandUpdated?.call(Map<String, dynamic>.from(data)));
+    socket.on('player_counts_updated', (data) => onPlayerCountsUpdated?.call(Map<String, dynamic>.from(data)));
   }
 
   void createRoom(String userName) {
@@ -173,6 +199,13 @@ class RoomService {
   void requestNextRound() {
     if (currentRoom != null) {
       socket.emit('next_round', {'roomCode': currentRoom});
+    }
+  }
+
+  /// Solicitar sincronización del estado actual del juego
+  void requestGameSync() {
+    if (currentRoom != null && myName != null) {
+      socket.emit('get_game_state', {'roomCode': currentRoom, 'playerName': myName});
     }
   }
 
